@@ -14,6 +14,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.minesafe.ar.audio.AudioManager
 import com.minesafe.ar.audio.VoiceInstructionManager
+import com.minesafe.ar.training.TrainingState
 import com.minesafe.ar.training.TrainingViewModel
 import com.minesafe.ar.ui.AppScreen
 import com.minesafe.ar.ui.MainApp
@@ -55,6 +56,7 @@ class MainActivity : ComponentActivity() {
                                     onSelectModule = { module -> viewModel.selectModule(module) },
                                     onStartTraining = {
                                         viewModel.resetTraining()
+                                        viewModel.updateState(TrainingState.PLACE_DOORWAY)
                                         currentScreen = AppScreen.TRAINING
                                     },
                                     isSoundMuted = isSoundMuted,
@@ -89,6 +91,7 @@ class MainActivity : ComponentActivity() {
                                     totalSteps = viewModel.totalSteps,
                                     onRestart = {
                                         viewModel.resetTraining()
+                                        viewModel.updateState(TrainingState.PLACE_DOORWAY)
                                         currentScreen = AppScreen.TRAINING
                                     },
                                     onHome = {

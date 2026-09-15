@@ -18,7 +18,9 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.google.ar.core.Anchor
+import com.google.ar.core.Config
 import com.google.ar.core.Frame
+import com.google.ar.core.HitResult as ArHitResult
 import com.google.ar.core.Plane
 import com.google.ar.core.TrackingState
 import com.minesafe.ar.R
@@ -67,21 +69,6 @@ fun MainApp(
     var showHelpModal by remember { mutableStateOf(false) }
     var showSettingsModal by remember { mutableStateOf(false) }
 
-    var childNodes by remember { mutableStateOf(listOf<Node>()) }
-    var currentFrame by remember { mutableStateOf<Frame?>(null) }
-    var doorwayAnchor by remember { mutableStateOf<Anchor?>(null) }
-    var doorDistance by remember { mutableFloatStateOf(-1f) }
-    var trackingLost by remember { mutableStateOf(false) }
-
-    // Hazard and Equipment Node references
-    var fireNode by remember { mutableStateOf<FireNode?>(null) }
-    var extinguisherNode by remember { mutableStateOf<ExtinguisherNode?>(null) }
-    var chemicalNode by remember { mutableStateOf<ChemicalHazardNode?>(null) }
-    var emergencyStationNode by remember { mutableStateOf<EmergencyStationNode?>(null) }
-
-    var isAimingAtFire by remember { mutableStateOf(false) }
-    var dangerZoneWarningTriggered by remember { mutableStateOf(false) }
-
     val engine = rememberEngine()
     val materialLoader = rememberMaterialLoader(engine)
 
@@ -93,6 +80,7 @@ fun MainApp(
     val railMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFCFD8DC), 0.92f, 0.18f, 0.88f) }
     val amberLampMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFFFCA28), 0.0f, 0.10f, 1.0f) }
     val signMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFFFD54F), 0.40f, 0.30f, 0.80f) }
+    val reticleWhiteMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFFFFFFF), 0.0f, 0.10f, 1.0f) }
     val reticleCyanMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFF00E5FF), 0.0f, 0.10f, 1.0f) }
     val hazardYellowMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFFFD600), 0.1f, 0.40f, 0.4f) }
     val hazardBandMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFF263238), 0.1f, 0.50f, 0.3f) }
@@ -111,6 +99,29 @@ fun MainApp(
     val whiteMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFFFFFFF), 0.0f, 0.30f, 0.5f) }
     val wetWalkwayMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFF756555), 0.05f, 0.22f, 0.78f) }
     val ventDuctMat = remember(materialLoader) { materialLoader.createColorInstance(Color(0xFFA59B44), 0.05f, 0.50f, 0.45f) }
+
+    // White AR Placement Reticle (Reference Image 2)
+    val reticleNode = remember(engine, reticleWhiteMat) {
+        PlacementReticleNode(engine, reticleWhiteMat).apply {
+            isVisible = false
+        }
+    }
+
+    var currentFloorHit by remember { mutableStateOf<ArHitResult?>(null) }
+    var childNodes by remember { mutableStateOf(listOf<Node>(reticleNode)) }
+    var currentFrame by remember { mutableStateOf<Frame?>(null) }
+    var doorwayAnchor by remember { mutableStateOf<Anchor?>(null) }
+    var doorDistance by remember { mutableFloatStateOf(-1f) }
+    var trackingLost by remember { mutableStateOf(false) }
+
+    // Hazard and Equipment Node references
+    var fireNode by remember { mutableStateOf<FireNode?>(null) }
+    var extinguisherNode by remember { mutableStateOf<ExtinguisherNode?>(null) }
+    var chemicalNode by remember { mutableStateOf<ChemicalHazardNode?>(null) }
+    var emergencyStationNode by remember { mutableStateOf<EmergencyStationNode?>(null) }
+
+    var isAimingAtFire by remember { mutableStateOf(false) }
+    var dangerZoneWarningTriggered by remember { mutableStateOf(false) }
 
     // Primary Directional Fill Light (180,000 lx angled down the mine tunnel)
     val mainLight = rememberMainLightNode(engine) {
@@ -194,119 +205,137 @@ fun MainApp(
         }
     }
 
-    Box(modifier = Modifier.fillMaxSize()) {
+    BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+        val cx = if (constraints.maxWidth > 0) constraints.maxWidth.toFloat() / 2f else 540f
+        val cy = if (constraints.maxHeight > 0) constraints.maxHeight.toFloat() / 2f else 960f
+
         ARScene(
             modifier = Modifier.fillMaxSize(),
             engine = engine,
             mainLightNode = mainLight,
             childNodes = childNodes,
-            planeRenderer = true,
+            planeRenderer = (doorwayAnchor == null),
+            sessionConfiguration = { _, config ->
+                config.planeFindingMode = Config.PlaneFindingMode.HORIZONTAL_AND_VERTICAL
+                config.focusMode = Config.FocusMode.AUTO
+                config.updateMode = Config.UpdateMode.LATEST_CAMERA_IMAGE
+                config.lightEstimationMode = Config.LightEstimationMode.ENVIRONMENTAL_HDR
+            },
             onTouchEvent = { e: MotionEvent, hitResult: HitResult? ->
                 if (e.action == MotionEvent.ACTION_UP) {
-                    when (currentState) {
-                        TrainingState.START -> {
-                            viewModel.updateState(TrainingState.PLACE_DOORWAY)
-                            return@ARScene true
-                        }
-                        TrainingState.PLACE_DOORWAY -> {
-                            currentFrame?.hitTest(e.x, e.y)?.firstOrNull {
-                                it.isValid(planeTypes = setOf(Plane.Type.HORIZONTAL_UPWARD_FACING))
-                            }?.let { arHit ->
-                                val anchor = arHit.createAnchorOrNull()
-                                if (anchor != null) {
-                                    doorwayAnchor = anchor
-                                    val anchorNode = AnchorNode(engine, anchor)
+                    if (doorwayAnchor == null && (currentState == TrainingState.START || currentState == TrainingState.SCAN_FLOOR || currentState == TrainingState.PLACE_DOORWAY)) {
+                        val tapHit = currentFrame?.hitTest(e.x, e.y)?.firstOrNull { hit ->
+                            val trackable = hit.trackable
+                            trackable is Plane &&
+                            trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                            trackable.trackingState == TrackingState.TRACKING &&
+                            trackable.isPoseInPolygon(hit.hitPose)
+                        } ?: currentFrame?.hitTest(e.x, e.y)?.firstOrNull { hit ->
+                            val trackable = hit.trackable
+                            trackable is Plane &&
+                            trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                            trackable.trackingState == TrackingState.TRACKING
+                        } ?: currentFloorHit
 
-                                    // 1. Realistic 3D Coal Mine Doorway (Matching Reference Image 2)
-                                    val doorway = DoorwayNode(
+                        if (tapHit != null) {
+                            val anchor = tapHit.createAnchorOrNull()
+                            if (anchor != null) {
+                                doorwayAnchor = anchor
+                                reticleNode.isVisible = false
+                                val anchorNode = AnchorNode(engine, anchor)
+
+                                // 1. Realistic 3D Coal Mine Doorway (Matching Reference Image 2)
+                                val doorway = DoorwayNode(
+                                    engine = engine,
+                                    rockMaterial = rockMat,
+                                    woodMaterial = woodMat,
+                                    metalMaterial = darkMetalMat,
+                                    lampEmissiveMaterial = amberLampMat,
+                                    signMaterial = signMat
+                                )
+                                anchorNode.addChildNode(doorway)
+
+                                // 2. Modular Underground Mine Environment (Heatmap topology)
+                                val mineEnv = MineEnvironmentNode(
+                                    engine = engine,
+                                    rockMaterial = rockMat,
+                                    floorMaterial = floorMat,
+                                    woodMaterial = woodMat,
+                                    metalMaterial = darkMetalMat,
+                                    lampMaterial = amberLampMat,
+                                    hazardYellowMaterial = hazardYellowMat,
+                                    pipeMaterial = pipeMat,
+                                    railMaterial = railMat,
+                                    wetWalkwayMaterial = wetWalkwayMat,
+                                    ventDuctMaterial = ventDuctMat
+                                )
+                                anchorNode.addChildNode(mineEnv)
+
+                                // 3. Spawning Hazard & Equipment by Module
+                                if (selectedModule == TrainingModule.ELECTRICAL_FIRE) {
+                                    val fNode = FireNode(
                                         engine = engine,
-                                        rockMaterial = rockMat,
-                                        woodMaterial = woodMat,
-                                        metalMaterial = darkMetalMat,
-                                        lampEmissiveMaterial = amberLampMat,
-                                        signMaterial = signMat
-                                    )
-                                    anchorNode.addChildNode(doorway)
-
-                                    // 2. Modular Underground Mine Environment (Heatmap topology)
-                                    val mineEnv = MineEnvironmentNode(
-                                        engine = engine,
-                                        rockMaterial = rockMat,
-                                        floorMaterial = floorMat,
-                                        woodMaterial = woodMat,
-                                        metalMaterial = darkMetalMat,
-                                        lampMaterial = amberLampMat,
-                                        hazardYellowMaterial = hazardYellowMat,
-                                        pipeMaterial = pipeMat,
-                                        railMaterial = railMat,
-                                        wetWalkwayMaterial = wetWalkwayMat,
-                                        ventDuctMaterial = ventDuctMat
-                                    )
-                                    anchorNode.addChildNode(mineEnv)
-
-                                    // 3. Spawning Hazard & Equipment by Module
-                                    if (selectedModule == TrainingModule.ELECTRICAL_FIRE) {
-                                        val fNode = FireNode(
-                                            engine = engine,
-                                            cabinetMaterial = darkMetalMat,
-                                            fireCoreMaterial = fireCoreMat,
-                                            fireOuterMaterial = fireOuterMat,
-                                            smokeMaterial = smokeMat,
-                                            warningSignMaterial = hazardYellowMat
-                                        ).apply {
-                                            position = Float3(0.0f, 0.0f, -10.0f)
-                                        }
-                                        fireNode = fNode
-                                        anchorNode.addChildNode(fNode)
-
-                                        val extNode = ExtinguisherNode(
-                                            engine = engine,
-                                            redBodyMaterial = extRedMat,
-                                            metalMaterial = darkMetalMat,
-                                            brassMaterial = brassMat,
-                                            rubberMaterial = rubberMat,
-                                            sprayMaterial = sprayMat,
-                                            gaugeGreenMaterial = greenGaugeMat
-                                        ).apply {
-                                            position = Float3(0.45f, 0.0f, -9.2f)
-                                        }
-                                        extinguisherNode = extNode
-                                        anchorNode.addChildNode(extNode)
-                                    } else {
-                                        // Module 2: Chemical Hazard
-                                        val cNode = ChemicalHazardNode(
-                                            engine = engine,
-                                            drumYellowMaterial = hazardYellowMat,
-                                            hazardBandMaterial = hazardBandMat,
-                                            vaporMaterial = chemVaporMat,
-                                            puddleMaterial = chemPuddleMat,
-                                            pipeMaterial = pipeMat,
-                                            perimeterMaterial = hazardYellowMat
-                                        ).apply {
-                                            position = Float3(2.2f, 0.0f, -14.0f)
-                                        }
-                                        chemicalNode = cNode
-                                        anchorNode.addChildNode(cNode)
-
-                                        val eNode = EmergencyStationNode(
-                                            engine = engine,
-                                            boardMaterial = greenStationMat,
-                                            cabinetMaterial = hazardYellowMat,
-                                            valveMaterial = extRedMat,
-                                            metalMaterial = darkMetalMat,
-                                            whiteCrossMaterial = whiteMat
-                                        ).apply {
-                                            position = Float3(-1.8f, 0.0f, -13.5f)
-                                        }
-                                        emergencyStationNode = eNode
-                                        anchorNode.addChildNode(eNode)
+                                        cabinetMaterial = darkMetalMat,
+                                        fireCoreMaterial = fireCoreMat,
+                                        fireOuterMaterial = fireOuterMat,
+                                        smokeMaterial = smokeMat,
+                                        warningSignMaterial = hazardYellowMat
+                                    ).apply {
+                                        position = Float3(0.0f, 0.0f, -10.0f)
                                     }
+                                    fireNode = fNode
+                                    anchorNode.addChildNode(fNode)
 
-                                    childNodes = childNodes + anchorNode
-                                    viewModel.updateState(TrainingState.ENTER_MINE)
+                                    val extNode = ExtinguisherNode(
+                                        engine = engine,
+                                        redBodyMaterial = extRedMat,
+                                        metalMaterial = darkMetalMat,
+                                        brassMaterial = brassMat,
+                                        rubberMaterial = rubberMat,
+                                        sprayMaterial = sprayMat,
+                                        gaugeGreenMaterial = greenGaugeMat
+                                    ).apply {
+                                        position = Float3(0.45f, 0.0f, -9.2f)
+                                    }
+                                    extinguisherNode = extNode
+                                    anchorNode.addChildNode(extNode)
+                                } else {
+                                    // Module 2: Chemical Hazard
+                                    val cNode = ChemicalHazardNode(
+                                        engine = engine,
+                                        drumYellowMaterial = hazardYellowMat,
+                                        hazardBandMaterial = hazardBandMat,
+                                        vaporMaterial = chemVaporMat,
+                                        puddleMaterial = chemPuddleMat,
+                                        pipeMaterial = pipeMat,
+                                        perimeterMaterial = hazardYellowMat
+                                    ).apply {
+                                        position = Float3(2.2f, 0.0f, -14.0f)
+                                    }
+                                    chemicalNode = cNode
+                                    anchorNode.addChildNode(cNode)
+
+                                    val eNode = EmergencyStationNode(
+                                        engine = engine,
+                                        boardMaterial = greenStationMat,
+                                        cabinetMaterial = hazardYellowMat,
+                                        valveMaterial = extRedMat,
+                                        metalMaterial = darkMetalMat,
+                                        whiteCrossMaterial = whiteMat
+                                    ).apply {
+                                        position = Float3(-1.8f, 0.0f, -13.5f)
+                                    }
+                                    emergencyStationNode = eNode
+                                    anchorNode.addChildNode(eNode)
                                 }
+
+                                childNodes = (childNodes - reticleNode) + anchorNode
+                                viewModel.updateState(TrainingState.ENTER_MINE)
+                                return@ARScene true
                             }
                         }
+                    }
+                    when (currentState) {
                         TrainingState.EXTINGUISHER_REACHED -> {
                             // Tap on safety pin or nozzle
                             if (hitResult?.node == extinguisherNode?.safetyPin || hitResult?.node == extinguisherNode?.nozzle) {
@@ -335,6 +364,41 @@ fun MainApp(
 
                 mainHandler.post {
                     trackingLost = isTrackingLost
+                }
+
+                if (doorwayAnchor == null) {
+                    val hits = frame.hitTest(cx, cy)
+                    val floorHit = hits.firstOrNull { hit ->
+                        val trackable = hit.trackable
+                        trackable is Plane &&
+                        trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                        trackable.trackingState == TrackingState.TRACKING &&
+                        trackable.isPoseInPolygon(hit.hitPose)
+                    } ?: hits.firstOrNull { hit ->
+                        val trackable = hit.trackable
+                        trackable is Plane &&
+                        trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                        trackable.trackingState == TrackingState.TRACKING
+                    } ?: frame.hitTest(cx, cy * 1.25f).firstOrNull { hit ->
+                        val trackable = hit.trackable
+                        trackable is Plane &&
+                        trackable.type == Plane.Type.HORIZONTAL_UPWARD_FACING &&
+                        trackable.trackingState == TrackingState.TRACKING
+                    }
+
+                    if (floorHit != null) {
+                        currentFloorHit = floorHit
+                        val hitPose = floorHit.hitPose
+                        reticleNode.position = Float3(hitPose.tx(), hitPose.ty(), hitPose.tz())
+                        val camPose = frame.camera.pose
+                        val dx = camPose.tx() - hitPose.tx()
+                        val dz = camPose.tz() - hitPose.tz()
+                        val yawDeg = Math.toDegrees(Math.atan2(dx.toDouble(), dz.toDouble())).toFloat()
+                        reticleNode.rotation = Float3(0f, yawDeg, 0f)
+                        reticleNode.isVisible = true
+                    } else if (currentFloorHit == null) {
+                        reticleNode.isVisible = false
+                    }
                 }
 
                 val cameraPose = frame.camera.pose
