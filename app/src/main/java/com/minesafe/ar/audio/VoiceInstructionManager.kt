@@ -9,13 +9,21 @@ class VoiceInstructionManager(context: Context) : TextToSpeech.OnInitListener {
     private var tts: TextToSpeech? = null
     private var isReady = false
     private var currentLanguage = Locale.ENGLISH
+    var isMuted: Boolean = false
+    var currentLanguageCode: String = "en"
+        private set
 
     init {
-        tts = TextToSpeech(context, this)
+        tts = TextToSpeech(context.applicationContext, this)
     }
 
     fun setLanguage(languageCode: String) {
-        currentLanguage = if (languageCode == "hi") Locale.Builder().setLanguage("hi").setRegion("IN").build() else Locale.ENGLISH
+        currentLanguageCode = languageCode
+        currentLanguage = if (languageCode == "hi") {
+            Locale.Builder().setLanguage("hi").setRegion("IN").build()
+        } else {
+            Locale.ENGLISH
+        }
         
         if (isReady) {
             val result = tts?.setLanguage(currentLanguage)
@@ -29,15 +37,24 @@ class VoiceInstructionManager(context: Context) : TextToSpeech.OnInitListener {
     override fun onInit(status: Int) {
         if (status == TextToSpeech.SUCCESS) {
             isReady = true
-            setLanguage(currentLanguage.language)
+            tts?.setSpeechRate(0.92f) // Clear, measured safety trainer pace
+            tts?.setPitch(0.98f)
+            setLanguage(currentLanguageCode)
         } else {
-            Log.e("VoiceManager", "Initialization Failed!")
+            Log.e("VoiceManager", "TTS Initialization Failed!")
         }
     }
 
     fun speak(instruction: String) {
+        if (isMuted) return
+        if (isReady && instruction.isNotBlank()) {
+            tts?.speak(instruction, TextToSpeech.QUEUE_FLUSH, null, "MINE_SAFE_VOICE")
+        }
+    }
+
+    fun stop() {
         if (isReady) {
-            tts?.speak(instruction, TextToSpeech.QUEUE_FLUSH, null, null)
+            tts?.stop()
         }
     }
 

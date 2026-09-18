@@ -3,6 +3,8 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+layout.buildDirectory.set(file("C:/Users/DELL/.gradle-builds/mera-mine/app"))
+
 android {
     namespace = "com.minesafe.ar"
     compileSdk {
@@ -21,6 +23,7 @@ android {
 
     buildTypes {
         release {
+            signingConfig = signingConfigs.getByName("debug")
             optimization {
                 enable = false
             }
