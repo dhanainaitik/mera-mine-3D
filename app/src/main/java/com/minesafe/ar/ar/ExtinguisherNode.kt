@@ -31,6 +31,9 @@ class ExtinguisherNode(
     val safetyPin: CubeNode
     val nozzle: CubeNode
     private val dischargeSprayGroup = Node(engine)
+    private var spray1: SphereNode? = null
+    private var spray2: SphereNode? = null
+    private var spray3: SphereNode? = null
     var isPinRemoved: Boolean = false
         private set
     var isNozzleReady: Boolean = false
@@ -134,24 +137,30 @@ class ExtinguisherNode(
         nozzle.addChildNode(nozzleTip)
         addChildNode(nozzle)
 
-        // 8. Discharge Spray Cone Cloud (Initially hidden)
+        // 8. Discharge Spray Cone Cloud (Explicitly hidden until discharged)
         dischargeSprayGroup.isVisible = false
         addChildNode(dischargeSprayGroup)
 
-        val spray1 = SphereNode(engine, radius = 0.14f, materialInstance = sprayMaterial).apply {
+        val s1 = SphereNode(engine, radius = 0.14f, materialInstance = sprayMaterial).apply {
             position = Float3(0.06f, 0.48f, 0.40f)
+            isVisible = false
         }
-        val spray2 = SphereNode(engine, radius = 0.28f, materialInstance = sprayMaterial).apply {
+        val s2 = SphereNode(engine, radius = 0.28f, materialInstance = sprayMaterial).apply {
             position = Float3(0.06f, 0.45f, 0.75f)
             scale = Float3(1.2f, 1.2f, 1.6f)
+            isVisible = false
         }
-        val spray3 = SphereNode(engine, radius = 0.42f, materialInstance = sprayMaterial).apply {
+        val s3 = SphereNode(engine, radius = 0.42f, materialInstance = sprayMaterial).apply {
             position = Float3(0.06f, 0.42f, 1.20f)
             scale = Float3(1.5f, 1.4f, 2.0f)
+            isVisible = false
         }
-        dischargeSprayGroup.addChildNode(spray1)
-        dischargeSprayGroup.addChildNode(spray2)
-        dischargeSprayGroup.addChildNode(spray3)
+        spray1 = s1
+        spray2 = s2
+        spray3 = s3
+        dischargeSprayGroup.addChildNode(s1)
+        dischargeSprayGroup.addChildNode(s2)
+        dischargeSprayGroup.addChildNode(s3)
     }
 
     fun removeSafetyPin() {
@@ -166,5 +175,8 @@ class ExtinguisherNode(
 
     fun setDischarging(active: Boolean) {
         dischargeSprayGroup.isVisible = active
+        spray1?.isVisible = active
+        spray2?.isVisible = active
+        spray3?.isVisible = active
     }
 }

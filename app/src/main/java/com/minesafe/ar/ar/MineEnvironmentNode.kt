@@ -43,38 +43,40 @@ class MineEnvironmentNode(
     init {
         if (modelLoader != null) {
             // =========================================================================
-            // 1. MINE ENTRANCE (mine_entrance.glb)
-            // Replaces the old fake doorway completely.
-            // Placed so its front timber beam is right at Z = 0.0m (the AR placement point).
-            // Scale 0.36 produces a human-scale clear opening (~1.63m wide x 2.62m high).
-            // Inner adit tunnel extends back to Z ≈ -1.76m ... -2.01m.
+            // 0. AIRTIGHT BEDROCK ENCLOSURE (mine_enclosure.glb)
+            // Completely encloses the virtual mine environment to eliminate background leakage:
+            // - Continuous contoured sub-floor extending from Z = 0.05m to Z = -30.0m
+            // - Lateral rock walls sealing behind the training area and cavern flanks
+            // - Front portal rock face surrounding the doorway threshold (Z = 0.0m)
+            // - Terminal rock bulkhead at Z = -29.5m
+            // - Natural vaulted ceiling spanning the length of the drift
+            // Uses seamless double-sided photo-scanned rock texture.
             // =========================================================================
             try {
-                val entranceInstance = modelLoader.createModelInstance("models/mine_entrance.glb")
-                if (entranceInstance != null) {
-                    val entranceNode = ModelNode(
-                        modelInstance = entranceInstance,
+                val enclosureInstance = modelLoader.createModelInstance("models/mine_enclosure.glb")
+                if (enclosureInstance != null) {
+                    val enclosureNode = ModelNode(
+                        modelInstance = enclosureInstance,
                         autoAnimate = false
                     ).apply {
-                        scale = Float3(0.36f, 0.36f, 0.36f)
-                        position = Float3(0.0f, -0.036f, -1.008f)
+                        scale = Float3(1.0f, 1.0f, 1.0f)
                         rotation = Float3(0.0f, 0.0f, 0.0f)
+                        position = Float3(0.0f, 0.0f, 0.0f)
                     }
-                    addChildNode(entranceNode)
-                    Log.d(tag, "Successfully loaded mine_entrance.glb as portal entrance")
+                    addChildNode(enclosureNode)
+                    Log.d(tag, "Successfully loaded mine_enclosure.glb airtight bedrock enclosure")
                 } else {
-                    Log.w(tag, "createModelInstance for mine_entrance.glb returned null")
+                    Log.w(tag, "createModelInstance for mine_enclosure.glb returned null")
                 }
             } catch (e: Exception) {
-                Log.e(tag, "Error loading mine_entrance.glb: ${e.message}", e)
+                Log.e(tag, "Error loading mine_enclosure.glb: ${e.message}", e)
             }
 
             // =========================================================================
-            // 2. UNDERGROUND TUNNEL (positanos_tunnel_optimized.glb)
-            // Begins DIRECTLY from the inner opening of mine_entrance.glb.
-            // Opening (End B) connects at Z = -1.75m, overlapping 25cm into the entrance adit.
-            // Continuous human-scale 3D enclosure (2.7m ceiling, 3.1m width) extending ~30m deep.
-            // Zero bluish gap, zero empty space, fully surrounds user once inside.
+            // 1. POSITANOS TUNNEL (positanos_tunnel_optimized.glb)
+            // Human-scale 3.5-meter stone arched transition pathway directly after doorway.
+            // Begins at Z = 0.0m (doorway threshold) and extends to Z = -3.5m.
+            // Has an OPEN EXIT at Z = -3.5m connecting directly to Carriere Orleans.
             // =========================================================================
             try {
                 val tunnelInstance = modelLoader.createModelInstance("models/positanos_tunnel_optimized.glb")
@@ -83,38 +85,66 @@ class MineEnvironmentNode(
                         modelInstance = tunnelInstance,
                         autoAnimate = false
                     ).apply {
-                        scale = Float3(5.8f, 5.8f, 5.8f)
-                        rotation = Float3(0.0f, -126.79f, 0.0f)
-                        position = Float3(-0.559f, 0.187f, -19.262f)
+                        scale = Float3(1.0f, 1.0f, 1.0f)
+                        rotation = Float3(0.0f, 0.0f, 0.0f)
+                        position = Float3(0.0f, 0.0f, 0.0f)
                     }
                     addChildNode(tunnelNode)
-                    Log.d(tag, "Successfully connected positanos_tunnel_optimized.glb directly to entrance")
+                    Log.d(tag, "Successfully connected Positanos tunnel pathway (Z = 0m to -3.5m)")
                 } else {
                     Log.w(tag, "createModelInstance for positanos_tunnel_optimized.glb returned null")
                 }
             } catch (e: Exception) {
                 Log.e(tag, "Error loading positanos_tunnel_optimized.glb: ${e.message}", e)
             }
+
+            // =========================================================================
+            // 3. FINAL MINE ENVIRONMENT (carriere_orleans_1_optimized.glb)
+            // Connects directly to the open exit of Positanos tunnel at Z = -3.5m.
+            // Extends forward into the vast underground limestone mine cavern.
+            // The training hazard & extinguisher (~7.5m - 9.5m) are located inside this mine.
+            // Continuous floor (Y = 0.0m), high vaulted ceiling, zero gap, zero blockage.
+            // =========================================================================
+            try {
+                val carriereInstance = modelLoader.createModelInstance("models/carriere_orleans_1_optimized.glb")
+                if (carriereInstance != null) {
+                    val carriereNode = ModelNode(
+                        modelInstance = carriereInstance,
+                        autoAnimate = false
+                    ).apply {
+                        scale = Float3(1.15f, 1.15f, 1.15f)
+                        rotation = Float3(0.0f, 90.0f, 0.0f)
+                        position = Float3(-15.95f, -7.383f, -8.675f)
+                    }
+                    addChildNode(carriereNode)
+                    Log.d(tag, "Successfully loaded carriere_orleans_1_optimized.glb starting at Z = -3.5m")
+                } else {
+                    Log.w(tag, "createModelInstance for carriere_orleans_1_optimized.glb returned null")
+                }
+            } catch (e: Exception) {
+                Log.e(tag, "Error loading carriere_orleans_1_optimized.glb: ${e.message}", e)
+            }
         }
 
         // =========================================================================
-        // 3. SUBTLE NEUTRAL/WARM UNDERGROUND MINE LIGHTING
-        // Eliminates any bluish cast. Uses realistic warm mine light (2800K - 3200K)
-        // spaced along the entrance and tunnel path so rock surfaces are visible.
+        // 4. SUBTLE NEUTRAL/WARM UNDERGROUND MINE LIGHTING
+        // Spaced along the doorway, tunnel pathway, and the Carriere Orleans mine cavern.
         // =========================================================================
         val lights = listOf(
-            // Light 1: Portal entrance threshold (replaces old doorway lanterns)
-            Triple(Float3(0.0f, 2.0f, -0.3f), 55000f, 6.0f),
-            // Light 2: Direct junction between entrance and tunnel (illuminates the seamless seam)
-            Triple(Float3(0.0f, 2.1f, -1.8f), 50000f, 6.5f),
-            // Light 3: First tunnel section
-            Triple(Float3(0.12f, 2.1f, -7.0f), 45000f, 7.0f),
-            // Light 4: Mid tunnel section
-            Triple(Float3(0.18f, 2.1f, -14.0f), 40000f, 7.5f),
-            // Light 5: Deep underground drift
-            Triple(Float3(0.24f, 2.1f, -21.0f), 35000f, 8.0f),
-            // Light 6: Terminus approach
-            Triple(Float3(0.28f, 2.1f, -28.0f), 30000f, 8.0f)
+            // Light 1: Portal entrance doorway
+            Triple(Float3(0.0f, 2.0f, -0.3f), 45000f, 5.0f),
+            // Light 2: Mid tunnel pathway
+            Triple(Float3(0.0f, 2.0f, -1.8f), 45000f, 5.0f),
+            // Light 3: Open tunnel exit into Carriere Orleans mine cavern
+            Triple(Float3(0.0f, 2.1f, -3.5f), 45000f, 6.0f),
+            // Light 4: Inside Carriere Orleans approaching fire extinguisher
+            Triple(Float3(0.5f, 2.2f, -6.5f), 45000f, 6.5f),
+            // Light 5: Fire training area in Carriere Orleans cavern
+            Triple(Float3(0.6f, 2.2f, -9.5f), 50000f, 7.0f),
+            // Light 6: Mid cavern chamber & rock pillars
+            Triple(Float3(-0.5f, 2.3f, -15.0f), 40000f, 8.0f),
+            // Light 7: Deep mine drift
+            Triple(Float3(-1.8f, 2.4f, -22.0f), 35000f, 8.5f)
         )
 
         for ((pos, intensity, falloff) in lights) {
@@ -131,39 +161,5 @@ class MineEnvironmentNode(
                 Log.w(tag, "Failed to create light at $pos: ${e.message}")
             }
         }
-
-        // =========================================================================
-        // 4. NATURAL ROCK TERMINUS (Zero Flat Walls, Zero Room Leaks)
-        // Deep at the end of the tunnel drift (~31.5m back), an organic coal rockfall
-        // bulkhead completely seals the drift so no external world/sky is visible.
-        // =========================================================================
-        val rng = Random(101)
-        val termX = 0.25f
-        val termZ = -31.5f
-        val rockCount = 12
-
-        for (i in 0 until rockCount) {
-            val rw = 1.6f + rng.nextFloat() * 0.8f
-            val rh = 1.2f + rng.nextFloat() * 0.6f
-            val rx = termX + (rng.nextFloat() * 3.4f - 1.7f)
-            val rz = termZ - (rng.nextFloat() * 1.5f)
-            val ry = (i * 0.30f) + 0.20f
-
-            val rockBlock = CubeNode(engine, size = Float3(rw, rh, 1.8f), materialInstance = rockMaterial).apply {
-                position = Float3(rx, ry, rz)
-                rotation = Float3(
-                    rng.nextFloat() * 24f - 12f,
-                    rng.nextFloat() * 36f - 18f,
-                    rng.nextFloat() * 16f - 8f
-                )
-            }
-            addChildNode(rockBlock)
-        }
-
-        val fallenTimber = CubeNode(engine, size = Float3(0.24f, 2.6f, 0.24f), materialInstance = woodMaterial).apply {
-            position = Float3(termX + 0.2f, 1.0f, termZ + 0.4f)
-            rotation = Float3(30f, 25f, -35f)
-        }
-        addChildNode(fallenTimber)
     }
 }
